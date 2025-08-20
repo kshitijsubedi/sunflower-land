@@ -24,6 +24,9 @@ import { Loading } from "features/auth/components";
 import { SomethingWentWrong } from "features/auth/components/SomethingWentWrong";
 import classNames from "classnames";
 import { getRelativeTime } from "lib/utils/time";
+import { getBumpkinLevel } from "features/game/lib/level";
+import { useNavigate, useLocation } from "react-router";
+import { useVisiting } from "lib/utils/visitUtils";
 
 interface ReferralProps {
   onHide: () => void;
@@ -36,7 +39,6 @@ const REFERRAL_PACKAGE: Partial<Record<InventoryItemName, number>> = {
 };
 
 export const ReferralContent: React.FC<ReferralProps> = ({ onHide }) => {
-  const { t } = useAppTranslation();
   const [tab, setTab] = useState(0);
   return (
     <CloseButtonPanel
@@ -62,13 +64,28 @@ export const Referrees: React.FC = () => {
   const { t } = useAppTranslation();
   const { authState } = useAuth();
   const { gameState } = useGame();
-  const { data, isLoading, error, mutate } = useSWR(
+  const { gameService, setFromRoute } = useContext(Context);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { isVisiting } = useVisiting();
+
+  const { data, isLoading, error } = useSWR(
     [authState.context.user.rawToken as string, gameState.context.farmId],
     fetcher,
   );
 
   if (isLoading) return <Loading />;
   if (error) return <SomethingWentWrong />;
+
+  const visitFarm = (playerId: number) => {
+    // Setting from route to navigate back to the correct page after visit
+    if (!isVisiting) {
+      setFromRoute(location.pathname);
+    }
+
+    gameService.send("VISIT", { landId: playerId });
+    navigate(`/visit/${playerId}`);
+  };
 
   const referrees = data!.data.referrees.sort(
     (a, b) => (b.flower ?? 0) - (a.flower ?? 0),
@@ -105,36 +122,58 @@ export const Referrees: React.FC = () => {
       </div>
 
       <table className="w-full text-xs table-auto border-collapse">
+        <thead>
+          <tr style={{ border: "1px solid #b96f50" }} className="bg-[#ead4aa]">
+            <th className="p-1.5 text-left">{t("player")}</th>
+            <th className="p-1.5 text-center">{t("level")}</th>
+            <th className="p-1.5 text-right">{t("referral.flowerLabel")}</th>
+          </tr>
+        </thead>
         <tbody>
-          {referrees.map(({ id, createdAt, username, vip, flower }, index) => (
-            <tr
-              key={index}
-              style={{ border: "1px solid #b96f50" }}
-              className={classNames({
-                "bg-[#ead4aa]": index % 2 === 0,
-              })}
-            >
-              <td className="p-1.5 flex">
-                <img
-                  src={vip ? vipIcon : SUNNYSIDE.icons.player}
-                  className="w-6 mr-2 object-contain"
-                />
-                <div>
-                  <p className="text-xs">{username ?? `#${id}`}</p>
-                  <p className="text-xxs">{getRelativeTime(createdAt)}</p>
-                </div>
-              </td>
+          {referrees.map(
+            (
+              { id, createdAt, username, vip, flower, level, experience },
+              index,
+            ) => (
+              <tr
+                key={index}
+                style={{ border: "1px solid #b96f50" }}
+                className={classNames({
+                  "bg-[#ead4aa]": index % 2 === 0,
+                  "hover:bg-[#d4c5a0] cursor-pointer": true,
+                })}
+                onClick={() => visitFarm(id)}
+              >
+                <td className="p-1.5 flex">
+                  <img
+                    src={vip ? vipIcon : SUNNYSIDE.icons.player}
+                    className="w-6 mr-2 object-contain"
+                  />
+                  <div>
+                    <p className="text-xs">{username ?? `#${id}`}</p>
+                    <p className="text-xxs">{getRelativeTime(createdAt)}</p>
+                  </div>
+                </td>
 
-              <td className="p-1.5">
-                <div className="flex items-center space-x-1 justify-end">
-                  <>
-                    <span>{flower ?? 0}</span>
-                    <img src={flowerIcon} className="h-4" />
-                  </>
-                </div>
-              </td>
-            </tr>
-          ))}
+                <td className="p-1.5 text-center">
+                  <span className="text-xs">
+                    {t("level.number", {
+                      level: level ?? getBumpkinLevel(experience ?? 0),
+                    })}
+                  </span>
+                </td>
+
+                <td className="p-1.5">
+                  <div className="flex items-center space-x-1 justify-end">
+                    <>
+                      <span>{flower ?? 0}</span>
+                      <img src={flowerIcon} className="h-4" />
+                    </>
+                  </div>
+                </td>
+              </tr>
+            ),
+          )}
           <tr>
             <td colSpan={3}>
               <div className="flex justify-center items-center">
@@ -148,7 +187,7 @@ export const Referrees: React.FC = () => {
   );
 };
 
-export const ReferralInfo: React.FC<ReferralProps> = ({ onHide }) => {
+export const ReferralInfo: React.FC<ReferralProps> = ({ onHide: _onHide }) => {
   const { t } = useAppTranslation();
   const [showFarm, setShowFarm] = useState(false);
   const { gameService } = useContext(Context);

@@ -11,6 +11,8 @@ type Referree = {
   createdAt: number;
   flower?: number;
   vip?: boolean;
+  level?: number;
+  experience?: number;
 };
 
 type Response = {
